@@ -1,10 +1,11 @@
 .PHONY: module
 
-VERSION :=$(shell cd src && git describe --tags --dirty)
 BASEDIR :=${CURDIR}
 BUILDDIR:="$(BASEDIR)/build"
 ROOTDIR:="$(BASEDIR)/install"
 SRCDIR:="$(BASEDIR)/src"
+SRCTARBALLURL:="https://downloads.mysql.com/archives/get/file/mysql-5.6.38.tar.gz"
+SRCTARBALL:="mysql-5.6.38.tar.gz"
 LIBFAKEOSVDIR:=$(BASEDIR)/../../libfakeosv
 LIBFAKEOSV:=$(LIBFAKEOSVDIR)/libfakeosv.so
 CFLAGS="-fPIC"
@@ -40,7 +41,16 @@ install.depend: build.depend $(LIBFAKEOSV)
 .PHONY: build
 build: build.depend
 
-build.depend: $(LIBFAKEOSV)
+$(SRCTARBALL):
+	test -f $@ || wget -O $@ $(SRCTARBALLURL)
+
+$(SRCDIR): $(SRCTARBALL) stagify.patch
+	rm -rf $@
+	mkdir -p $@
+	tar -C "$@" -x --strip-components=1 -f "$<"
+	patch -p1 -d $(SRCDIR) < stagify.patch
+
+build.depend: $(LIBFAKEOSV) $(SRCDIR)
 	mkdir -p $(BUILDDIR)
 	cd $(BUILDDIR); \
 	cmake \

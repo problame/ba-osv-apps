@@ -1,4 +1,6 @@
 build/
 install/
+src/
+*.tar.gz
 *.depend
 usr.manifest

@@ -1,0 +1,173 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fdc5fef1643..1492e0cd20b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -438,7 +438,10 @@ INCLUDE(configure.cmake)
+ 
+ # Common defines and includes
+ ADD_DEFINITIONS(-DHAVE_CONFIG_H)
+-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}/include)
++INCLUDE_DIRECTORIES(
++    ${CMAKE_CURRENT_BINARY_DIR}/include
++    ${CMAKE_SOURCE_DIR}/../../../include # OSv includes
++)
+ 
+ # Add bundled or system zlib.
+ MYSQL_CHECK_ZLIB_WITH_COMPRESS()
+diff --git a/sql/CMakeLists.txt b/sql/CMakeLists.txt
+index e41141b4780..a70308971d4 100644
+--- a/sql/CMakeLists.txt
++++ b/sql/CMakeLists.txt
+@@ -89,6 +89,7 @@ SET(SQL_SHARED_SOURCES
+   mdl.cc
+   mf_iocache.cc
+   my_decimal.cc
++  my_osv_stagesched.cc
+   net_serv.cc
+   opt_explain.cc
+   opt_explain_traditional.cc
+@@ -227,7 +228,9 @@ DTRACE_INSTRUMENT(sql)
+ TARGET_LINK_LIBRARIES(sql ${MYSQLD_STATIC_PLUGIN_LIBS} 
+   mysys mysys_ssl dbug strings vio regex   
+   ${LIBWRAP} ${LIBCRYPT} ${LIBDL}
+-  ${SSL_LIBRARIES})
++  ${SSL_LIBRARIES}
++  fakeosv
++  )
+ 
+ #
+ # On Windows platform we compile in the clinet-side Windows Native Authentication
+diff --git a/sql/my_osv_stagesched.cc b/sql/my_osv_stagesched.cc
+new file mode 100644
+index 00000000000..18cf2e4cf39
+--- /dev/null
++++ b/sql/my_osv_stagesched.cc
+@@ -0,0 +1,18 @@
++#include "my_osv_stagesched.h"
++#include <osv/stagesched.h>
++#include <stdexcept>
++
++sched::stage* osv_stage_net;
++sched::stage* osv_stage_parser;
++sched::stage* osv_stage_insert;
++
++void my_osv_stagesched_initialize()
++{
++    osv_stage_net = sched::stage::define("net");
++    if (!osv_stage_net) throw std::runtime_error("could not initialize stage");
++    osv_stage_parser  = sched::stage::define("parser");
++    if (!osv_stage_parser) throw std::runtime_error("could not initialize stage");
++    osv_stage_insert  = sched::stage::define("insert");
++    if (!osv_stage_insert) throw std::runtime_error("could not initialize stage");
++}
++
+diff --git a/sql/my_osv_stagesched.h b/sql/my_osv_stagesched.h
+new file mode 100644
+index 00000000000..e10775b5158
+--- /dev/null
++++ b/sql/my_osv_stagesched.h
+@@ -0,0 +1,14 @@
++#ifndef MY_OSV_PIPELINING_H
++#define MY_OSV_PIPELINING_H
++
++#include <stack>
++#include <osv/stagesched.h>
++
++extern sched::stage* osv_stage_net;
++extern sched::stage* osv_stage_parser;
++extern sched::stage* osv_stage_insert;
++
++void my_osv_stagesched_initialize();
++
++#endif
++
+diff --git a/sql/mysqld.cc b/sql/mysqld.cc
+index 3a3699a7eaf..dec7c561643 100644
+--- a/sql/mysqld.cc
++++ b/sql/mysqld.cc
+@@ -16,6 +16,8 @@
+ 
+ #include "my_global.h"                          /* NO_EMBEDDED_ACCESS_CHECKS */
+ 
++#include "my_osv_stagesched.h"
++
+ #include <vector>
+ #include <algorithm>
+ #include <functional>
+@@ -5249,6 +5251,9 @@ int win_main(int argc, char **argv)
+ int mysqld_main(int argc, char **argv)
+ #endif
+ {
++
++  my_osv_stagesched_initialize();
++
+   /*
+     Perform basic thread library and malloc initialization,
+     to be able to read defaults files and parse options.
+diff --git a/sql/sql_class.h b/sql/sql_class.h
+index cd5b632b7d5..cbd231fe29b 100644
+--- a/sql/sql_class.h
++++ b/sql/sql_class.h
+@@ -22,6 +22,7 @@
+ #include "my_global.h"                          /* NO_EMBEDDED_ACCESS_CHECKS */
+ #ifdef MYSQL_SERVER
+ #include "unireg.h"                    // REQUIRED: for other includes
++#include "my_osv_stagesched.h"
+ #endif
+ #include "sql_const.h"
+ #include <mysql/plugin_audit.h>
+diff --git a/sql/sql_lex.cc b/sql/sql_lex.cc
+index 91599f00163..976ba72a39e 100644
+--- a/sql/sql_lex.cc
++++ b/sql/sql_lex.cc
+@@ -34,6 +34,8 @@
+ #include "sql_optimizer.h"             // JOIN
+ #include <mysql/psi/mysql_statement.h>
+ 
++#include "my_osv_stagesched.h"
++
+ static int lex_one_token(YYSTYPE *yylval, THD *thd);
+ 
+ /*
+@@ -527,6 +529,7 @@ void lex_end(LEX *lex)
+ 
+ Yacc_state::~Yacc_state()
+ {
++  osv_stage_insert->enqueue();
+   if (yacc_yyss)
+   {
+     my_free(yacc_yyss);
+diff --git a/sql/sql_parse.cc b/sql/sql_parse.cc
+index a420df94dc7..b3dd5f4936d 100644
+--- a/sql/sql_parse.cc
++++ b/sql/sql_parse.cc
+@@ -8370,6 +8370,8 @@ bool parse_sql(THD *thd,
+                Parser_state *parser_state,
+                Object_creation_ctx *creation_ctx)
+ {
++  osv_stage_parser->enqueue();
++
+   bool ret_value;
+   DBUG_ASSERT(thd->m_parser_state == NULL);
+   DBUG_ASSERT(thd->lex->m_sql_cmd == NULL);
+diff --git a/storage/perfschema/pfs.cc b/storage/perfschema/pfs.cc
+index b8848d108ff..015ba3d10cc 100644
+--- a/storage/perfschema/pfs.cc
++++ b/storage/perfschema/pfs.cc
+@@ -41,6 +41,8 @@
+ #include "sp_head.h"
+ #include "pfs_digest.h"
+ 
++#include "../../sql/my_osv_stagesched.h"
++
+ using std::min;
+ /**
+   @page PAGE_PERFORMANCE_SCHEMA The Performance Schema main page
+@@ -4692,6 +4694,7 @@ static void set_statement_text_v1(PSI_statement_locker *locker,
+ static void set_statement_lock_time_v1(PSI_statement_locker *locker,
+                                        ulonglong count)
+ {
++  osv_stage_net->enqueue();
+   SET_STATEMENT_ATTR_BODY(locker, m_lock_time, count);
+ }
+ 
