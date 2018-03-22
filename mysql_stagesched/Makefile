@@ -1,3 +1,7 @@
+ifeq ($(OSV_BASE), )
+    $(error "expecting OSV_BASE env variable to point to OSv src directory")
+endif
+
 .PHONY: module
 
 BASEDIR :=${CURDIR}
@@ -6,7 +10,7 @@ ROOTDIR:="$(BASEDIR)/install"
 SRCDIR:="$(BASEDIR)/src"
 SRCTARBALLURL:="https://downloads.mysql.com/archives/get/file/mysql-5.6.38.tar.gz"
 SRCTARBALL:="mysql-5.6.38.tar.gz"
-LIBFAKEOSVDIR:=$(BASEDIR)/../../libfakeosv
+LIBFAKEOSVDIR:=$(OSV_BASE)/libfakeosv
 LIBFAKEOSV:=$(LIBFAKEOSVDIR)/libfakeosv.so
 CFLAGS="-fPIC"
 CXXFLAGS="-fPIC -fpermissive"

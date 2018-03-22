@@ -3,5 +3,6 @@
 **/*.o
 **/*.so
 cs_microbench
+cs_microbench.wrapper
 usr.manifest
 build.h

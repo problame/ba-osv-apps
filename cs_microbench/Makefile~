@@ -36,7 +36,7 @@ $(TARGET).so: $(OBJS)
 	$(CXX) -shared -o $@ $(LDFLAGS) $(OBJS)
 
 $(TARGET): $(OBJS) $(TARGET).so $(LIBFAKEOSVDIR)/libfakeosv.so
-	$(CXX) -o $@ $(LDFLAGS) -L$(LIBFAKEOSVDIR) -lfakeosv $(OBJS)
+	$(CXX) -o $@ $(LDFLAGS) -L./$(LIBFAKEOSVDIR) -lfakeosv $(OBJS)
 
 .PHONY: usr.manifest
 usr.manifest:
