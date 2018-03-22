@@ -9,7 +9,7 @@ BUILDDIR:="$(BASEDIR)/build"
 ROOTDIR:="$(BASEDIR)/install"
 SRCDIR:="$(BASEDIR)/src"
 SRCTARBALLURL:="https://downloads.mysql.com/archives/get/file/mysql-5.6.38.tar.gz"
-SRCTARBALL:="mysql-5.6.38.tar.gz"
+SRCTARBALL:=mysql-5.6.38.tar.gz
 LIBFAKEOSVDIR:=$(OSV_BASE)/libfakeosv
 LIBFAKEOSV:=$(LIBFAKEOSVDIR)/libfakeosv.so
 CFLAGS="-fPIC"
@@ -48,13 +48,14 @@ build: build.depend
 $(SRCTARBALL):
 	test -f $@ || wget -O $@ $(SRCTARBALLURL)
 
-$(SRCDIR): $(SRCTARBALL) stagify.patch
-	rm -rf $@
-	mkdir -p $@
-	tar -C "$@" -x --strip-components=1 -f "$<"
+patch.depend: $(SRCTARBALL) stagify.patch
+	rm -rf $(SRCDIR)
+	mkdir -p $(SRCDIR)
+	tar -C "$(SRCDIR)" -x --strip-components=1 -f "$<"
 	patch -p1 -d $(SRCDIR) < stagify.patch
+	touch $@
 
-build.depend: $(LIBFAKEOSV) $(SRCDIR)
+build.depend: $(LIBFAKEOSV) patch.depend
 	mkdir -p $(BUILDDIR)
 	cd $(BUILDDIR); \
 	cmake \
@@ -62,6 +63,7 @@ build.depend: $(LIBFAKEOSV) $(SRCDIR)
 		-DCMAKE_CXX_FLAGS='-fpermissive -fPIC' \
 		-DCMAKE_C_FLAGS='-fPIC' \
         -DCMAKE_CXX_LINK_FLAGS='-L$(LIBFAKEOSVDIR)' \
+        -DOSV_BASE='$(OSV_BASE)' \
 		-DWITH_UNIT_TESTS=OFF \
 		-DWITH_NDBCLUSTER=OFF \
 		-DWITH_NDBCLUSTER_STORAGE_ENGINE=OFF \
@@ -72,7 +74,7 @@ build.depend: $(LIBFAKEOSV) $(SRCDIR)
 		$(SRCDIR)
 	LD_LIBRARY_PATH=$(LIBFAKEOSVDIR) \
 		$(MAKE) -C $(BUILDDIR)
-	touch build.depend
+	touch $@
 	
 .PHONY: clean
 clean:

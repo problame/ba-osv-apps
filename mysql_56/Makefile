@@ -5,7 +5,7 @@ BUILDDIR:="$(BASEDIR)/build"
 ROOTDIR:="$(BASEDIR)/install"
 SRCDIR:="$(BASEDIR)/src"
 SRCTARBALLURL:="https://downloads.mysql.com/archives/get/file/mysql-5.6.38.tar.gz"
-SRCTARBALL:="mysql-5.6.38.tar.gz"
+SRCTARBALL:=mysql-5.6.38.tar.gz
 CFLAGS="-fPIC"
 CXXFLAGS="-fPIC -fpermissive"
 
@@ -41,12 +41,13 @@ build: build.depend
 $(SRCTARBALL):
 	test -f $@ || wget -O $@ $(SRCTARBALLURL)
 
-$(SRCDIR): $(SRCTARBALL)
-	rm -rf $@
-	mkdir -p $@
-	tar -C "$@" -x --strip-components=1 -f "$<"
+src.depend: $(SRCTARBALL)
+	rm -rf $(SRCDIR)
+	mkdir -p $(SRCDIR)
+	tar -C "$(SRCDIR)" -x --strip-components=1 -f "$<"
+	touch $@
 
-build.depend: $(SRCDIR)
+build.depend: src.depend
 	mkdir -p $(BUILDDIR)
 	cd $(BUILDDIR); \
 	cmake \

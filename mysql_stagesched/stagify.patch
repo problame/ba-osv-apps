@@ -9,7 +9,7 @@ index fdc5fef1643..1492e0cd20b 100644
 -INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}/include)
 +INCLUDE_DIRECTORIES(
 +    ${CMAKE_CURRENT_BINARY_DIR}/include
-+    ${CMAKE_SOURCE_DIR}/../../../include # OSv includes
++    ${OSV_BASE}/include # OSv includes
 +)
  
  # Add bundled or system zlib.
